@@ -12,8 +12,8 @@
   let camera, scene, renderer, realRenderer;
   let containerObj;
   let mesh;
-  let rendererWidth = screen.height; // width is height because landscape orientation
-  let rendererHeight = screen.width; // height is width
+  let rendererWidth; // width is height because landscape orientation
+  let rendererHeight; // height is width
   let isProjectionMatrixSet = false;
   let spatialInterface;
   let raycaster = new THREE.Raycaster();
@@ -26,6 +26,23 @@
   });
 
   main = function () {
+    
+    spatialInterface.onRealityInterfaceLoaded(function() {
+      spatialInterface.getScreenDimensions(function(width, height) {
+        document.body.width = width + 'px';
+        document.body.height = height + 'px';
+        rendererWidth = width;
+        rendererHeight = height;
+        // renderer.setSize( rendererWidth, rendererHeight );
+
+        spatialInterface.changeFrameSize(width, height);
+
+        init();
+      });
+    });
+  };
+  
+  function init() {
     // create a fullscreen webgl renderer for the threejs content and add to the dom
     realRenderer = new THREE.WebGLRenderer( { alpha: true } );
     realRenderer.setPixelRatio( window.devicePixelRatio );
@@ -149,17 +166,7 @@
     spatialInterface.setFullScreenOn();
     spatialInterface.addMatrixListener(renderScene);
     spatialInterface.registerTouchDecider(touchDecider);
-
-    spatialInterface.getScreenDimensions(function(width, height) {
-      document.body.width = width + 'px';
-      document.body.height = height + 'px';
-      rendererWidth = width;
-      rendererHeight = height;
-      renderer.setSize( rendererWidth, rendererHeight );
-
-      spatialInterface.changeFrameSize(width, height);
-    });
-  };
+  }
 
   let lastProjectionMatrix = null;
   let lastModelViewMatrix = null;
