@@ -36,6 +36,11 @@
 
   let teapot, textureCube;
 
+  let pendingLoads = {
+    grid: true,
+    pisa: true,
+  };
+
   // allocate these just once
   const diffuseColor = new THREE.Color();
   const specularColor = new THREE.Color();
@@ -73,7 +78,9 @@
     light = new THREE.DirectionalLight( 0xFFFFFF, 1.0 );
 
     // TEXTURE MAP
-    const textureMap = new THREE.TextureLoader().load( 'textures/uv_grid_opengl.jpg' );
+    const textureMap = new THREE.TextureLoader().load('textures/uv_grid_opengl.jpg', function() {
+      pendingLoads.grid = false;
+    });
     textureMap.wrapS = textureMap.wrapT = THREE.RepeatWrapping;
     textureMap.anisotropy = 16;
     textureMap.encoding = THREE.sRGBEncoding;
@@ -86,7 +93,9 @@
       path + "pz.png", path + "nz.png"
     ];
 
-    textureCube = new THREE.CubeTextureLoader().load( urls );
+    textureCube = new THREE.CubeTextureLoader().load(urls, function() {
+      pendingLoads.pisa = false;
+    });
     textureCube.encoding = THREE.sRGBEncoding;
 
     // MATERIALS
@@ -249,20 +258,23 @@
 
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
-        if (done && realGl) {
-          for (let proxy of proxies) {
-            proxy.__uncloneableObj = null;
-            delete proxy.__uncloneableObj;
+        let canBeDone = !Object.values(pendingLoads).some(a => a);
+        if (canBeDone) {
+          if (done && realGl) {
+            for (let proxy of proxies) {
+              proxy.__uncloneableObj = null;
+              delete proxy.__uncloneableObj;
+            }
+            proxies = [];
+            realRenderer.dispose();
+            realRenderer.forceContextLoss();
+            // realRenderer.context = null;
+            realRenderer.domElement = null;
+            realRenderer = null;
+            realGl = null;
           }
-          proxies = [];
-          realRenderer.dispose();
-          realRenderer.forceContextLoss();
-          // realRenderer.context = null;
-          realRenderer.domElement = null;
-          realRenderer = null;
-          realGl = null;
+          done = true;
         }
-        done = true;
       }
     }
   };
