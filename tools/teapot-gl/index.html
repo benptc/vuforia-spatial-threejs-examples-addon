@@ -9,13 +9,13 @@
 <script type="module">
   import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
   import { TeapotGeometry } from 'https://unpkg.com/three@0.126.1/examples/jsm/geometries/TeapotGeometry.js';
-  
+
   // 2. set up some variables for the three.js scene
   let camera, scene, renderer, realRenderer;
   let containerObj;
   let mesh;
-  let rendererWidth = screen.height; // width is height because landscape orientation
-  let rendererHeight = screen.width; // height is width
+  let rendererWidth;
+  let rendererHeight;
   let isProjectionMatrixSet = false;
   let spatialInterface;
   let raycaster = new THREE.Raycaster();
@@ -46,7 +46,10 @@
     spatialInterface.useWebGlWorker();
   });
 
-  main = function() {
+  main = function (args) {
+    rendererWidth = args.width;
+    rendererHeight = args.height;
+
     // create a fullscreen webgl renderer for the threejs content and add to the dom
     realRenderer = new THREE.WebGLRenderer( { alpha: true } );
     realRenderer.setPixelRatio( window.devicePixelRatio );
@@ -106,7 +109,7 @@
     scene.add( light );
 
     setupGui();
-    
+
     // // 6. Add some content to the scene's container object - customize this!
     // let texture = new THREE.TextureLoader().load('textures/crate.gif');
     // let geometry = new THREE.BoxBufferGeometry(100, 100, 100);
@@ -119,18 +122,8 @@
     spatialInterface.setFullScreenOn();
     spatialInterface.addMatrixListener(renderScene);
     spatialInterface.registerTouchDecider(touchDecider);
+  }
 
-    spatialInterface.getScreenDimensions(function(width, height) {
-      document.body.width = width + 'px';
-      document.body.height = height + 'px';
-      rendererWidth = width;
-      rendererHeight = height;
-      renderer.setSize( rendererWidth, rendererHeight );
-      
-      spatialInterface.changeFrameSize(width, height);
-    });
-  };
-  
   function setupGui() {
     effectController = {
 
@@ -172,7 +165,7 @@
 
     createNewTeapot();
   }
-  
+
   function createNewTeapot() {
     if ( teapot !== undefined ) {
       teapot.geometry.dispose();
@@ -194,12 +187,12 @@
     shading === "smooth" ? gouraudMaterial : (
     shading === "glossy" ? phongMaterial : (
     shading === "textured" ? texturedMaterial : reflectiveMaterial ) ) ) ) );	// if no match, pick Phong
-    
+
     teapot.rotation.z = Math.PI;
 
     phongMaterial.shininess = effectController.shininess;
     texturedMaterial.shininess = effectController.shininess;
-    
+
     diffuseColor.setHSL( effectController.hue, effectController.saturation, effectController.lightness );
     if ( effectController.metallic ) {
       // make colors match to give a more metallic look
@@ -218,12 +211,12 @@
     specularColor.multiplyScalar( effectController.ks );
     phongMaterial.specular.copy( specularColor );
     texturedMaterial.specular.copy( specularColor );
-    
+
     // Ambient's actually controlled by the light for this demo
     ambientLight.color.setHSL( effectController.hue, effectController.saturation, effectController.lightness * effectController.ka );
     light.position.set( effectController.lx, effectController.ly, effectController.lz );
     light.color.setHSL( effectController.lhue, effectController.lsaturation, effectController.llightness );
-    
+
     containerObj.add( teapot );
   }
 
@@ -273,7 +266,7 @@
       }
     }
   };
-  
+
   function touchDecider(eventData) {
     // 1. sets the mouse position with a coordinate system where the center
     //    of the screen is the origin

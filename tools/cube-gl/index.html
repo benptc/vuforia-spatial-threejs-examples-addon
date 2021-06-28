@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>THREE.js Cube</title>
     <script src="objectDefaultFiles/gl-worker.js"></script>
+    <script src="objectDefaultFiles/envelopeContents.js"></script>
 </head>
 <body>
 <script type="module">
@@ -23,48 +24,45 @@
     // 3. Initialize the Spatial Toolbox API
     spatialInterface = new SpatialInterface();
     spatialInterface.useWebGlWorker();
+    let _envelopeContents = new EnvelopeContents(spatialInterface, document.body);
   });
 
-  main = function () {
+  main = function (args) {
+    rendererWidth = args.width;
+    rendererHeight = args.height;
+
     // 7. Use the Spatial Toolbox APIs to prepare to render correctly
     spatialInterface.setFullScreenOn();
 
-    spatialInterface.getScreenDimensions(function(width, height) {
-      document.body.width = width + 'px';
-      document.body.height = height + 'px';
-      rendererWidth = width;
-      rendererHeight = height;
+    spatialInterface.changeFrameSize(args.width, args.height);
 
-      spatialInterface.changeFrameSize(width, height);
+    // create a fullscreen webgl renderer for the threejs content and add to the dom
+    realRenderer = new THREE.WebGLRenderer( { alpha: true } );
+    realRenderer.setPixelRatio( window.devicePixelRatio );
+    realRenderer.setSize( rendererWidth, rendererHeight );
+    // document.body.appendChild( realRenderer.domElement );
+    realGl = realRenderer.getContext();
 
-      // create a fullscreen webgl renderer for the threejs content and add to the dom
-      realRenderer = new THREE.WebGLRenderer( { alpha: true } );
-      realRenderer.setPixelRatio( window.devicePixelRatio );
-      realRenderer.setSize( rendererWidth, rendererHeight );
-      // document.body.appendChild( realRenderer.domElement );
-      realGl = realRenderer.getContext();
+    renderer = new THREE.WebGLRenderer({context: gl});
+    renderer.setSize(rendererWidth, rendererHeight);
 
-      renderer = new THREE.WebGLRenderer({context: gl});
-      renderer.setSize(rendererWidth, rendererHeight);
+    // 5. Initialize the three.js scene with a camera and contents
+    camera = new THREE.PerspectiveCamera(70, rendererWidth / rendererHeight, 1, 1000);
+    scene = new THREE.Scene();
+    containerObj = new THREE.Object3D();
+    containerObj.matrixAutoUpdate = false;
+    scene.add(containerObj);
 
-      // 5. Initialize the three.js scene with a camera and contents
-      camera = new THREE.PerspectiveCamera(70, rendererWidth / rendererHeight, 1, 1000);
-      scene = new THREE.Scene();
-      containerObj = new THREE.Object3D();
-      containerObj.matrixAutoUpdate = false;
-      scene.add(containerObj);
+    // 6. Add some content to the scene's container object - customize this!
+    let texture = new THREE.TextureLoader().load('textures/crate.gif');
+    let geometry = new THREE.BoxBufferGeometry(500, 500, 500);
+    let material = new THREE.MeshBasicMaterial({map: texture});
+    mesh = new THREE.Mesh(geometry, material);
+    mesh.position.setZ(50);
+    containerObj.add(mesh);
 
-      // 6. Add some content to the scene's container object - customize this!
-      let texture = new THREE.TextureLoader().load('textures/crate.gif');
-      let geometry = new THREE.BoxBufferGeometry(500, 500, 500);
-      let material = new THREE.MeshBasicMaterial({map: texture});
-      mesh = new THREE.Mesh(geometry, material);
-      mesh.position.setZ(50);
-      containerObj.add(mesh);
-
-      spatialInterface.addMatrixListener(renderScene);
-      spatialInterface.registerTouchDecider(touchDecider);
-    });
+    spatialInterface.addMatrixListener(renderScene);
+    spatialInterface.registerTouchDecider(touchDecider);
   };
 
   let lastProjectionMatrix = null;
