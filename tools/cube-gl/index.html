@@ -19,6 +19,9 @@
   let spatialInterface;
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
+  let pendingLoads = {
+    crate: true,
+  };
 
   window.addEventListener('load', function() {
     // 3. Initialize the Spatial Toolbox API
@@ -54,7 +57,9 @@
     scene.add(containerObj);
 
     // 6. Add some content to the scene's container object - customize this!
-    let texture = new THREE.TextureLoader().load('textures/crate.gif');
+    let texture = new THREE.TextureLoader().load('textures/crate.gif', function() {
+      pendingLoads.crate = false;
+    });
     let geometry = new THREE.BoxBufferGeometry(500, 500, 500);
     let material = new THREE.MeshBasicMaterial({map: texture});
     mesh = new THREE.Mesh(geometry, material);
@@ -94,20 +99,24 @@
 
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
-        if (done && realGl) {
-          for (let proxy of proxies) {
-            proxy.__uncloneableObj = null;
-            delete proxy.__uncloneableObj;
+        // Can be done when nothing is pending
+        let canBeDone = !Object.values(pendingLoads).some(a => a);
+        if (canBeDone) {
+          if (done && realGl) {
+            for (let proxy of proxies) {
+              proxy.__uncloneableObj = null;
+              delete proxy.__uncloneableObj;
+            }
+            proxies = [];
+            realRenderer.dispose();
+            realRenderer.forceContextLoss();
+            // realRenderer.context = null;
+            realRenderer.domElement = null;
+            realRenderer = null;
+            realGl = null;
           }
-          proxies = [];
-          realRenderer.dispose();
-          realRenderer.forceContextLoss();
-          // realRenderer.context = null;
-          realRenderer.domElement = null;
-          realRenderer = null;
-          realGl = null;
+          done = true;
         }
-        done = true;
       }
     }
   };
