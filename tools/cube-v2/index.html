@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>THREE.js Cube</title>
+  <script src="objectDefaultFiles/object.js"></script>
+  <script src="objectDefaultFiles/threejsInterface.js"></script>
+  <script src="objectDefaultFiles/gl-worker.js"></script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+
+let spatialInterface = new SpatialInterface();
+let threejsInterface = new ThreejsInterface(spatialInterface);
+
+let mesh = null;
+
+threejsInterface.onSceneCreated(function(sceneObj, _groundplaneObj) {
+  threejsInterface.resourceLoaded('crate', false);
+  let texture = new THREE.TextureLoader().load('textures/crate.gif', function() {
+    threejsInterface.resourceLoaded('crate', true);
+  });
+  let geometry = new THREE.BoxBufferGeometry(500, 500, 500);
+  let material = new THREE.MeshBasicMaterial({map: texture});
+  mesh = new THREE.Mesh(geometry, material);
+  mesh.position.setZ(50);
+  sceneObj.add(mesh);
+
+}).onRender(function() { // triggers 60 fps
+  mesh.rotation.z += 0.01; // make it spin
+});
+
+</script>
+</body>
+</html>

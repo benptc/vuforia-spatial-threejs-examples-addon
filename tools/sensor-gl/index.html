@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>THREE.js Sensor</title>
+    <script src="objectDefaultFiles/gl-worker.js"></script>
+    <script src="objectDefaultFiles/envelopeContents.js"></script>
+</head>
+<body>
+<script type="module">
+    // import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+    import * as THREE from './three@0.126.1.module.js';
+    // 2. set up some variables for the three.js scene
+    let camera, scene, renderer, realRenderer;
+    let containerObj;
+    let handleMesh;
+    let mesh;
+    let rendererWidth;
+    let rendererHeight;
+    let isProjectionMatrixSet = false;
+    let spatialInterface;
+    let raycaster = new THREE.Raycaster();
+    let mouse = new THREE.Vector2();
+    let pendingLoads = {
+        crate: true,
+    };
+
+    window.addEventListener('load', function() {
+        // 3. Initialize the Spatial Toolbox API
+        spatialInterface = new SpatialInterface();
+        spatialInterface.useWebGlWorker();
+        let _envelopeContents = new EnvelopeContents(spatialInterface, document.body);
+    });
+
+    main = function (args) {
+        rendererWidth = args.width;
+        rendererHeight = args.height;
+
+        // 7. Use the Spatial Toolbox APIs to prepare to render correctly
+        spatialInterface.setFullScreenOn();
+
+        spatialInterface.changeFrameSize(args.width, args.height);
+
+        // create a fullscreen webgl renderer for the threejs content and add to the dom
+        realRenderer = new THREE.WebGLRenderer( { alpha: true } );
+        realRenderer.setPixelRatio( window.devicePixelRatio );
+        realRenderer.setSize( rendererWidth, rendererHeight );
+        // document.body.appendChild( realRenderer.domElement );
+        realGl = realRenderer.getContext();
+
+        renderer = new THREE.WebGLRenderer({context: gl});
+        renderer.setSize(rendererWidth, rendererHeight);
+
+        // 5. Initialize the three.js scene with a camera and contents
+        camera = new THREE.PerspectiveCamera(70, rendererWidth / rendererHeight, 1, 1000);
+        scene = new THREE.Scene();
+        containerObj = new THREE.Object3D();
+        containerObj.matrixAutoUpdate = false;
+        scene.add(containerObj);
+
+        let iconGeometry = new THREE.BoxBufferGeometry(1000, 1000, 1000);
+        let iconMaterial = new THREE.MeshBasicMaterial({color: 0x00ffff}); //, transparent: true, opacity: 1.0});
+        handleMesh = new THREE.Mesh(iconGeometry, iconMaterial);
+        handleMesh.rotation.z = Math.PI / 4;
+        handleMesh.rotation.x = Math.PI / 4;
+        handleMesh.name = 'handleMesh';
+        containerObj.add(handleMesh);
+
+        // // 6. Add some content to the scene's container object - customize this!
+        // let texture = new THREE.TextureLoader().load('textures/crate.gif', function() {
+        //     pendingLoads.crate = false;
+        // });
+        // let geometry = new THREE.BoxBufferGeometry(500, 500, 500);
+        // let material = new THREE.MeshBasicMaterial({map: texture});
+        // mesh = new THREE.Mesh(geometry, material);
+        // mesh.position.setZ(50);
+        // containerObj.add(mesh);
+
+        spatialInterface.addMatrixListener(renderScene);
+        spatialInterface.registerTouchDecider(touchDecider);
+    };
+
+    let lastProjectionMatrix = null;
+    let lastModelViewMatrix = null;
+
+    // 8. This main rendering loop will get called 60 times per second
+    function renderScene(modelViewMatrix, projectionMatrix) {
+        lastProjectionMatrix = projectionMatrix;
+        lastModelViewMatrix = modelViewMatrix;
+    }
+
+    let _then = 0;
+    let done = false;
+
+    render = function(_now) {
+
+        // 9. only set the projection matrix for the camera 1 time, since it stays the same
+        if (!isProjectionMatrixSet && lastProjectionMatrix && lastProjectionMatrix.length === 16) {
+            setMatrixFromArray(camera.projectionMatrix, lastProjectionMatrix);
+            camera.projectionMatrixInverse.getInverse(camera.projectionMatrix);
+            isProjectionMatrixSet = true;
+        }
+
+        // 10. Every frame, set the position of the containerObj to the modelViewMatrix
+        if (isProjectionMatrixSet && lastModelViewMatrix && lastModelViewMatrix.length === 16) {
+            setMatrixFromArray(containerObj.matrix, lastModelViewMatrix);
+            // mesh.rotation.z += 0.01; // make it spin
+            // renderer.render(scene, camera);
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+                // Can be done when nothing is pending
+                let canBeDone = !Object.values(pendingLoads).some(a => a);
+                if (canBeDone) {
+                    if (done && realGl) {
+                        for (let proxy of proxies) {
+                            proxy.__uncloneableObj = null;
+                            delete proxy.__uncloneableObj;
+                        }
+                        proxies = [];
+                        realRenderer.dispose();
+                        realRenderer.forceContextLoss();
+                        // realRenderer.context = null;
+                        realRenderer.domElement = null;
+                        realRenderer = null;
+                        realGl = null;
+                    }
+                    done = true;
+                }
+            }
+        }
+    };
+
+    function touchDecider(eventData) {
+        // 1. sets the mouse position with a coordinate system where the center
+        //    of the screen is the origin
+        mouse.x = ( eventData.x / window.innerWidth ) * 2 - 1;
+        mouse.y = - ( eventData.y / window.innerHeight ) * 2 + 1;
+
+        // 2. set the picking ray from the camera position and mouse coordinates
+        raycaster.setFromCamera( mouse, camera );
+
+        // 3. compute intersections
+        var intersects = raycaster.intersectObjects( containerObj.children, true );
+
+        return intersects.length > 0;
+    }
+
+    // 11. This is just a helper function to set a three.js matrix using an array
+    function setMatrixFromArray(matrix, array) {
+        matrix.set( array[0], array[4], array[8], array[12],
+            array[1], array[5], array[9], array[13],
+            array[2], array[6], array[10], array[14],
+            array[3], array[7], array[11], array[15]);
+    }
+</script>
+</body>
+</html>

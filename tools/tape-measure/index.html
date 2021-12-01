@@ -1,0 +1,381 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>THREE.js Sphere</title>
+    <script src="objectDefaultFiles/object.js"></script>
+    <script src="objectDefaultFiles/pep.min.js"></script>
+<!--    <script src="resources/threejs-src/2016/three.min.js"></script>-->
+
+<!--    <script src="resources/threejs-src/r135/three.min.js"></script>-->
+<!--    <script src="resources/threejs-src/r135/js/loaders/FontLoader.js"></script>-->
+<!--    <script src="resources/threejs-src/r135/js/geometries/TextGeometry.js"></script>-->
+
+<!--    <script src="resources/threejs-src/r135/FontLoader.js"></script>-->
+    <script src="PersistentStorage.js"></script>
+    <script src="pathToMesh.js" type="module"></script>
+<!--    <script src="textToMesh.js" type="module"></script>-->
+</head>
+<body>
+<script type="module">
+
+    import * as THREE from './resources/threejs-src/r126/build/three.module.js';
+
+    // import * as THREE from './resources/threejs-src/r135/three.module.js';
+    // import { FontLoader } from "./resources/threejs-src/r135/jsm/loaders/FontLoader.js";
+    // import { TextGeometry } from "./resources/threejs-src/r135/jsm/geometries/TextGeometry.js";
+
+    let camera, scene, renderer;
+    let threejsContainerObj;
+    let realityInterface;
+    let mesh, endMesh, endCalcMesh, pathMesh, distanceTextMesh;
+    let isProjectionMatrixSet = false;
+    // noinspection JSSuspiciousNameCombination
+    let rendererWidth = screen.height;
+    // noinspection JSSuspiciousNameCombination
+    let rendererHeight = screen.width;
+    let aspectRatio = rendererWidth / rendererHeight;
+    let raycaster = new THREE.Raycaster();
+    let mouse = new THREE.Vector2();
+
+    window.THREE = THREE;
+
+    let isDragging = false;
+
+    window.addEventListener('load', function() {
+        // create a fullscreen webgl renderer for the threejs content and add to the dom
+        renderer = new THREE.WebGLRenderer( { alpha: true } );
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize( rendererWidth, rendererHeight );
+        document.body.appendChild( renderer.domElement );
+
+        // create a threejs camera and scene
+        camera = new THREE.PerspectiveCamera( 70, aspectRatio, 1, 1000 );
+        scene = new THREE.Scene();
+
+        threejsContainerObj = new THREE.Object3D();
+        threejsContainerObj.matrixAutoUpdate = false;
+        scene.add(threejsContainerObj);
+
+        let ambLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambLight);
+
+        addGroundPlaneCollisionObject();
+        createMesh();
+        createEndMesh(mesh);
+
+        // make the frame fullscreen within the reality editor,
+        // and subscribe to the modelview and projection matrices
+        realityInterface = new RealityInterface();
+
+        realityInterface.onRealityInterfaceLoaded(function() {
+
+            realityInterface.getScreenDimensions(function(width, height) {
+                document.body.width = width + 'px';
+                document.body.height = height + 'px';
+                rendererWidth = width;
+                rendererHeight = height;
+                renderer.setSize( rendererWidth, rendererHeight );
+                realityInterface.changeFrameSize(width, height);
+            });
+
+            realityInterface.setFullScreenOn();
+            realityInterface.setMoveDelay(1000);
+            realityInterface.registerTouchDecider(touchDecider);
+
+            // IMPORTANT: no need to separately subscribe to groundplane and modelview
+            // replace addMatrixListener and addGroundPlaneMatrixListener with addAnchoredModelViewListener
+            realityInterface.subscribeToAnchoredModelView();
+            realityInterface.addAnchoredModelViewListener(renderScene);
+
+            realityInterface.initNode('storage', 'storeData');
+            window.initStorage(realityInterface, 'storage');
+            window.storage.listen('endPosition', function(endPosition) {
+                if (endMesh && endCalcMesh) {
+                    endMesh.position.set(endPosition.x, endPosition.y, endPosition.z);
+                    endCalcMesh.position.set(endPosition.x, endPosition.y, endPosition.z);
+                    drawAndMeasurePath();
+                }
+            });
+
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('pointercancel', onPointerUp);
+        });
+    });
+
+    function createMesh() {
+        let boxWidthMeters = 0.1;
+        let boxHeightMeters = 0.1;
+        let boxDepthMeters = 0.1;
+        let mToUnit = 1000;
+        let geometry = new THREE.BoxGeometry(boxWidthMeters * mToUnit, boxHeightMeters * mToUnit, boxDepthMeters * mToUnit);
+        const palette = ['#eb0e7e']; // '#ff0077', '#0077ff', '#ff00ff', '#ff7700', '#7700ff', '#ffff00'];
+        const sensorColor = palette[Math.floor(Math.random() * palette.length)];
+        let material = new THREE.MeshBasicMaterial({
+            color: sensorColor,
+            opacity: 0.7,
+            transparent: true,
+        });
+        mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'mesh';
+        mesh.position.x = 0;
+        mesh.position.y = boxHeightMeters / 2 * mToUnit;
+        mesh.position.z = 0;
+        threejsContainerObj.add( mesh );
+    }
+
+    function createEndMesh(parent) {
+        let boxWidthMeters = 0.1;
+        let boxHeightMeters = 0.1;
+        let boxDepthMeters = 0.1;
+        let mToUnit = 1000;
+        let geometry = new THREE.BoxGeometry(boxWidthMeters * mToUnit, boxHeightMeters * mToUnit, boxDepthMeters * mToUnit);
+
+        let calcMaterial = new THREE.MeshBasicMaterial({
+            color: '#0077ff',
+            opacity: 0.1,
+            transparent: true,
+        });
+        endCalcMesh = new THREE.Mesh(geometry, calcMaterial);
+        endCalcMesh.name = 'endCalcMesh';
+        endCalcMesh.position.x = 150;
+        endCalcMesh.position.y = 0;
+        endCalcMesh.position.z = 0;
+        parent.add( endCalcMesh );
+
+        const palette = ['#0077ff']; //['#eb0e7e']; // '#ff0077', '#0077ff', '#ff00ff', '#ff7700', '#7700ff', '#ffff00'];
+        const sensorColor = palette[Math.floor(Math.random() * palette.length)];
+        let material = new THREE.MeshBasicMaterial({
+            color: sensorColor,
+            opacity: 0.7,
+            transparent: true,
+        });
+        endMesh = new THREE.Mesh(geometry, material);
+        endMesh.name = 'endMesh';
+        endMesh.position.x = 150;
+        endMesh.position.y = 0;
+        endMesh.position.z = 0;
+        parent.add( endMesh );
+    }
+
+    function addGroundPlaneCollisionObject() {
+        const sceneSizeInMeters = 10;
+        const geometry = new THREE.PlaneGeometry( 1000 * sceneSizeInMeters, 1000 * sceneSizeInMeters);
+        const material = new THREE.MeshBasicMaterial( {color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.1} );
+        const plane = new THREE.Mesh( geometry, material );
+        plane.rotateX(Math.PI/2);
+        plane.visible = false;
+        threejsContainerObj.add( plane );
+        plane.name = 'groundPlaneElement';
+    }
+
+    function createTextMesh() {
+
+    }
+
+    function touchDecider(eventData) {
+        //1. sets the mouse position with a coordinate system where the center
+        //   of the screen is the origin
+        mouse.x = ( eventData.x / window.innerWidth ) * 2 - 1;
+        mouse.y = - ( eventData.y / window.innerHeight ) * 2 + 1;
+
+        //2. set the picking ray from the camera position and mouse coordinates
+        raycaster.setFromCamera( mouse, camera );
+
+        //3. compute intersections
+        let intersects = raycaster.intersectObjects( scene.children, true ).filter(function(intersect) {
+            return intersect.object.name !== 'groundPlaneElement'; // ignore touches that hit the groundplane mesh
+        });
+
+        if (intersects.length > 0) {
+            onTouchIntersect(intersects);
+        }
+
+        // // only move if we hold down on the center mesh
+        // intersects = intersects.filter(function(intersect) {
+        //     return intersect.object.name === 'mesh';
+        // });
+
+        if (intersects.length === 0 && isDragging) {
+            onPointerUp();
+        }
+
+        return intersects.length > 0;
+    }
+
+    function onTouchIntersect(intersects) {
+        console.log(intersects);
+
+        intersects.forEach(function(intersect) {
+            if (intersect.object.name === 'endMesh' || intersect.object.name === 'endCalcMesh' || intersect.object.name === 'pathMesh') {
+                isDragging = true;
+            }
+        });
+    }
+
+    function onPointerMove(e) {
+        if (!isDragging) { return; }
+
+        // console.log('move drag');
+
+        mouse.x = ( e.clientX / window.innerWidth ) * 2 - 1;
+        mouse.y = - ( e.clientY / window.innerHeight ) * 2 + 1;
+        raycaster.setFromCamera( mouse, camera );
+
+        // this time, only look for intersects that hit the groundPlaneElement
+        let intersects = raycaster.intersectObjects( scene.children, true ).filter(function(intersect) {
+            return intersect.object.name === 'groundPlaneElement';
+        });
+
+        // console.log(intersects);
+
+        // let currentWorldPosition = endMesh.getWorldPosition();
+        // let newWorldPosition = intersects[0].point;
+
+        let dPos = endCalcMesh.worldToLocal(intersects[0].point);
+        let newPos = new THREE.Vector3(endCalcMesh.position.x + dPos.x, 0, endCalcMesh.position.z + dPos.z);
+
+        endMesh.position.set(newPos.x, newPos.y, newPos.z);
+
+        console.log(newPos);
+
+        // endMesh.position.x = endMesh.position.x + dPos.x;
+        // endMesh.position.z = endMesh.position.z + dPos.z;
+
+        drawAndMeasurePath();
+    }
+
+    function onPointerUp() {
+        if (!isDragging) { return }
+
+        console.log('stop drag');
+
+        endCalcMesh.position.set(endMesh.position.x, endMesh.position.y, endMesh.position.z);
+
+        window.storage.write('endPosition', { x: endMesh.position.x, y: endMesh.position.y, z: endMesh.position.z });
+
+        drawAndMeasurePath();
+
+        isDragging = false;
+    }
+
+    function drawAndMeasurePath() {
+        // update path mesh
+        if (pathMesh) {
+            mesh.remove(pathMesh);
+        }
+        pathMesh = window.pathToMesh([
+            {
+                x: 0,
+                y: 0,
+                z: 0
+            },
+            {
+                x: endMesh.position.x,
+                y: endMesh.position.y,
+                z: endMesh.position.z
+            },
+        ], 30, 30);
+        pathMesh.name = 'pathMesh';
+        mesh.add(pathMesh);
+
+        updateDistance();
+    }
+
+    function updateDistance() {
+        let dx = endMesh.position.x - mesh.position.x;
+        let dy = endMesh.position.y - mesh.position.y;
+        let dz = endMesh.position.z - mesh.position.z;
+
+        let distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        console.log(distance);
+        renderText(distance);
+    }
+
+    function renderText(distance) {
+        let distanceText = (distance / 1000).toFixed(2) + ' m';
+        // window.textToMesh(distanceText, 200, function(textMesh) {
+        //     if (distanceTextMesh) {
+        //         mesh.removeChild(distanceTextMesh);
+        //     }
+        //
+        //     distanceTextMesh = textMesh;
+        //     mesh.add(distanceTextMesh);
+        // })
+
+        const loader = new THREE.FontLoader();
+
+        let fontPath = './resources/helvetiker_regular.typeface.json'; // './resources/gentilis_regular.typeface.json'; //
+
+        loader.load( fontPath, function (font) {
+            const geometry = new THREE.TextGeometry( distanceText, {
+                font: font,
+                size: 80,
+                height: 5,
+                curveSegments: 12,
+                bevelEnabled: true,
+                bevelThickness: 10,
+                bevelSize: 8,
+                bevelOffset: 0,
+                bevelSegments: 5
+            } );
+            // const material = new THREE.MeshBasicMaterial({
+            //     color: '#ffffff',
+            //     opacity: 0.9,
+            //     transparent: true
+            // });
+
+            if (distanceTextMesh) {
+                mesh.remove(distanceTextMesh);
+            }
+
+            distanceTextMesh = new THREE.Mesh(geometry, [
+                new THREE.MeshBasicMaterial({ color: '#ffffff' }), // front
+                new THREE.MeshBasicMaterial({ color: '#000000' }) // side
+            ]);
+
+            distanceTextMesh.position.x = -100 + (mesh.position.x + endMesh.position.x) / 2;
+            distanceTextMesh.position.y = 100 + (mesh.position.y + endMesh.position.y) / 2;
+            distanceTextMesh.position.z = (mesh.position.z + endMesh.position.z) / 2;
+
+            distanceTextMesh.rotation.x = - Math.PI / 2;
+
+            mesh.add(distanceTextMesh)
+
+        }, function(progress) {
+            console.log('font progress', progress);
+        }, function(error) {
+            console.log('font error', error);
+        });
+
+    }
+
+    function setMatrixFromArray(matrix, array) {
+        matrix.set( array[0], array[4], array[8], array[12],
+            array[1], array[5], array[9], array[13],
+            array[2], array[6], array[10], array[14],
+            array[3], array[7], array[11], array[15]
+        );
+    }
+
+    function renderScene(anchoredModelViewMatrix, projectionMatrix) {
+        // only set the projection matrix for the camera 1 time, since it stays the same
+        if (!isProjectionMatrixSet && projectionMatrix.length > 0) {
+            setMatrixFromArray(camera.projectionMatrix, projectionMatrix);
+            camera.projectionMatrixInverse.getInverse(camera.projectionMatrix);
+            isProjectionMatrixSet = true;
+        }
+
+        if (isProjectionMatrixSet) { // don't turn into else statement, both can happen
+            // update model view matrix
+            setMatrixFromArray(threejsContainerObj.matrix, anchoredModelViewMatrix);
+            // render the scene
+            threejsContainerObj.visible = true;
+            renderer.render( scene, camera );
+        }
+    }
+
+</script>
+</body>
+</html>
