@@ -15,7 +15,7 @@
     let camera, scene, renderer;
     let threejsContainerObj;
     let realityInterface;
-    let mesh, calcMesh, endMesh, endCalcMesh, pathMesh, distanceTextMesh;
+    let startMesh, startCalcMesh, endMesh, endCalcMesh, pathMesh, distanceTextMesh;
     let isProjectionMatrixSet = false;
     // noinspection JSSuspiciousNameCombination
     let rendererWidth = screen.height;
@@ -24,6 +24,9 @@
     let aspectRatio = rendererWidth / rendererHeight;
     let raycaster = new THREE.Raycaster();
     let mouse = new THREE.Vector2();
+
+    const sensorColor = '#000000';
+    const wireframeColor = '#00ffff';
 
     window.THREE = THREE;
 
@@ -87,9 +90,9 @@
                 }
             });
             window.storage.listen('startPosition', function(startPosition) {
-                if (mesh && calcMesh) {
-                    mesh.position.set(startPosition.x, startPosition.y, startPosition.z);
-                    calcMesh.position.set(startPosition.x, startPosition.y, startPosition.z);
+                if (startMesh && startCalcMesh) {
+                    startMesh.position.set(startPosition.x, startPosition.y, startPosition.z);
+                    startCalcMesh.position.set(startPosition.x, startPosition.y, startPosition.z);
                     drawAndMeasurePath();
                 }
             });
@@ -108,30 +111,35 @@
         let geometry = new THREE.BoxGeometry(boxWidthMeters * mToUnit, boxHeightMeters * mToUnit, boxDepthMeters * mToUnit);
 
         let calcMaterial = new THREE.MeshBasicMaterial({
-            color: '#eb0e7e',
+            color: sensorColor,
             opacity: 0.1,
             transparent: true,
         });
-        calcMesh = new THREE.Mesh(geometry, calcMaterial);
-        calcMesh.name = 'calcMesh';
-        calcMesh.position.x = 0;
-        calcMesh.position.y = boxHeightMeters / 2 * mToUnit;
-        calcMesh.position.z = 0;
-        parent.add( calcMesh );
+        startCalcMesh = new THREE.Mesh(geometry, calcMaterial);
+        startCalcMesh.name = 'startCalcMesh';
+        startCalcMesh.position.x = 0;
+        startCalcMesh.position.y = boxHeightMeters / 2 * mToUnit;
+        startCalcMesh.position.z = 0;
+        parent.add( startCalcMesh );
 
-        const palette = ['#eb0e7e']; // '#ff0077', '#0077ff', '#ff00ff', '#ff7700', '#7700ff', '#ffff00'];
-        const sensorColor = palette[Math.floor(Math.random() * palette.length)];
         let material = new THREE.MeshBasicMaterial({
             color: sensorColor,
             opacity: 0.7,
             transparent: true,
         });
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.name = 'mesh';
-        mesh.position.x = 0;
-        mesh.position.y = boxHeightMeters / 2 * mToUnit;
-        mesh.position.z = 0;
-        parent.add( mesh );
+        startMesh = new THREE.Mesh(geometry, material);
+        startMesh.name = 'startMesh';
+        startMesh.position.x = 0;
+        startMesh.position.y = boxHeightMeters / 2 * mToUnit;
+        startMesh.position.z = 0;
+        parent.add( startMesh );
+
+        material = new THREE.MeshBasicMaterial({
+            color: wireframeColor,
+            wireframe: true,
+        });
+        let wireframeMesh = new THREE.Mesh(geometry, material);
+        startMesh.add(wireframeMesh);
     }
 
     function createEndMesh(parent) {
@@ -142,7 +150,7 @@
         let geometry = new THREE.BoxGeometry(boxWidthMeters * mToUnit, boxHeightMeters * mToUnit, boxDepthMeters * mToUnit);
 
         let calcMaterial = new THREE.MeshBasicMaterial({
-            color: '#0077ff',
+            color: sensorColor,
             opacity: 0.1,
             transparent: true,
         });
@@ -153,8 +161,6 @@
         endCalcMesh.position.z = 0;
         parent.add( endCalcMesh );
 
-        const palette = ['#0077ff']; //['#eb0e7e']; // '#ff0077', '#0077ff', '#ff00ff', '#ff7700', '#7700ff', '#ffff00'];
-        const sensorColor = palette[Math.floor(Math.random() * palette.length)];
         let material = new THREE.MeshBasicMaterial({
             color: sensorColor,
             opacity: 0.7,
@@ -166,6 +172,13 @@
         endMesh.position.y = boxHeightMeters / 2 * mToUnit;
         endMesh.position.z = 0;
         parent.add( endMesh );
+
+        material = new THREE.MeshBasicMaterial({
+            color: wireframeColor,
+            wireframe: true,
+        });
+        let wireframeMesh = new THREE.Mesh(geometry, material);
+        endMesh.add(wireframeMesh);
     }
 
     function addGroundPlaneCollisionObject() {
@@ -197,9 +210,9 @@
             onTouchIntersect(intersects);
         }
 
-        // // only move if we hold down on the center mesh
+        // // only move if we hold down on the center startMesh
         // intersects = intersects.filter(function(intersect) {
-        //     return intersect.object.name === 'mesh';
+        //     return intersect.object.name === 'startMesh';
         // });
 
         if (intersects.length === 0 && isDragging) {
@@ -218,8 +231,8 @@
                 isDragging = true;
                 isDraggingEnd = true;
             }
-            if (intersect.object.name === 'mesh' ||
-                intersect.object.name === 'calcMesh' ||
+            if (intersect.object.name === 'startMesh' ||
+                intersect.object.name === 'startCalcMesh' ||
                 intersect.object.name === 'pathMesh') {
                 isDragging = true;
                 isDraggingStart = true;
@@ -242,9 +255,9 @@
         });
 
         if (isDraggingStart) {
-            let dPos = calcMesh.worldToLocal(intersects[0].point);
-            let newPos = new THREE.Vector3(calcMesh.position.x + dPos.x, calcMesh.position.y, calcMesh.position.z + dPos.z);
-            mesh.position.set(newPos.x, newPos.y, newPos.z);
+            let dPos = startCalcMesh.worldToLocal(intersects[0].point);
+            let newPos = new THREE.Vector3(startCalcMesh.position.x + dPos.x, startCalcMesh.position.y, startCalcMesh.position.z + dPos.z);
+            startMesh.position.set(newPos.x, newPos.y, newPos.z);
         } else if (isDraggingEnd) {
             let dPos = endCalcMesh.worldToLocal(intersects[0].point);
             let newPos = new THREE.Vector3(endCalcMesh.position.x + dPos.x, endCalcMesh.position.y, endCalcMesh.position.z + dPos.z);
@@ -260,8 +273,8 @@
         console.log('stop drag');
 
         if (isDraggingStart) {
-            calcMesh.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
-            window.storage.write('startPosition', { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+            startCalcMesh.position.set(startMesh.position.x, startMesh.position.y, startMesh.position.z);
+            window.storage.write('startPosition', { x: startMesh.position.x, y: startMesh.position.y, z: startMesh.position.z });
         }
 
         if (isDraggingEnd) {
@@ -283,9 +296,9 @@
         }
         pathMesh = window.pathToMesh([
             {
-                x: mesh.position.x,
-                y: mesh.position.y,
-                z: mesh.position.z
+                x: startMesh.position.x,
+                y: startMesh.position.y,
+                z: startMesh.position.z
             },
             {
                 x: endMesh.position.x,
@@ -300,9 +313,9 @@
     }
 
     function updateDistance() {
-        let dx = endMesh.position.x - mesh.position.x;
-        let dy = endMesh.position.y - mesh.position.y;
-        let dz = endMesh.position.z - mesh.position.z;
+        let dx = endMesh.position.x - startMesh.position.x;
+        let dy = endMesh.position.y - startMesh.position.y;
+        let dz = endMesh.position.z - startMesh.position.z;
 
         let distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         console.log(distance);
@@ -338,9 +351,9 @@
                 new THREE.MeshBasicMaterial({ color: '#000000' }) // side
             ]);
 
-            distanceTextMesh.position.x = -100 + (mesh.position.x + endMesh.position.x) / 2;
-            distanceTextMesh.position.y = 100 + (mesh.position.y + endMesh.position.y) / 2;
-            distanceTextMesh.position.z = (mesh.position.z + endMesh.position.z) / 2;
+            distanceTextMesh.position.x = -100 + (startMesh.position.x + endMesh.position.x) / 2;
+            distanceTextMesh.position.y = 100 + (startMesh.position.y + endMesh.position.y) / 2;
+            distanceTextMesh.position.z = (startMesh.position.z + endMesh.position.z) / 2;
 
             distanceTextMesh.rotation.x = - Math.PI / 2; // facing up to the ceiling
             // TODO: text is upside down if you look from the wrong angle... can we billboard it?
