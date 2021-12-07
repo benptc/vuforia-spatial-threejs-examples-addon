@@ -5,30 +5,17 @@
     <title>THREE.js Sphere</title>
     <script src="objectDefaultFiles/object.js"></script>
     <script src="objectDefaultFiles/pep.min.js"></script>
-<!--    <script src="resources/threejs-src/2016/three.min.js"></script>-->
-
-<!--    <script src="resources/threejs-src/r135/three.min.js"></script>-->
-<!--    <script src="resources/threejs-src/r135/js/loaders/FontLoader.js"></script>-->
-<!--    <script src="resources/threejs-src/r135/js/geometries/TextGeometry.js"></script>-->
-
-<!--    <script src="resources/threejs-src/r135/FontLoader.js"></script>-->
     <script src="PersistentStorage.js"></script>
     <script src="pathToMesh.js" type="module"></script>
-<!--    <script src="textToMesh.js" type="module"></script>-->
 </head>
 <body>
 <script type="module">
-
     import * as THREE from './resources/threejs-src/r126/build/three.module.js';
-
-    // import * as THREE from './resources/threejs-src/r135/three.module.js';
-    // import { FontLoader } from "./resources/threejs-src/r135/jsm/loaders/FontLoader.js";
-    // import { TextGeometry } from "./resources/threejs-src/r135/jsm/geometries/TextGeometry.js";
 
     let camera, scene, renderer;
     let threejsContainerObj;
     let realityInterface;
-    let mesh, endMesh, endCalcMesh, pathMesh, distanceTextMesh;
+    let mesh, calcMesh, endMesh, endCalcMesh, pathMesh, distanceTextMesh;
     let isProjectionMatrixSet = false;
     // noinspection JSSuspiciousNameCombination
     let rendererWidth = screen.height;
@@ -41,6 +28,8 @@
     window.THREE = THREE;
 
     let isDragging = false;
+    let isDraggingStart = false;
+    let isDraggingEnd = false;
 
     window.addEventListener('load', function() {
         // create a fullscreen webgl renderer for the threejs content and add to the dom
@@ -61,8 +50,8 @@
         scene.add(ambLight);
 
         addGroundPlaneCollisionObject();
-        createMesh();
-        createEndMesh(mesh);
+        createMesh(threejsContainerObj);
+        createEndMesh(threejsContainerObj);
 
         // make the frame fullscreen within the reality editor,
         // and subscribe to the modelview and projection matrices
@@ -97,6 +86,13 @@
                     drawAndMeasurePath();
                 }
             });
+            window.storage.listen('startPosition', function(startPosition) {
+                if (mesh && calcMesh) {
+                    mesh.position.set(startPosition.x, startPosition.y, startPosition.z);
+                    calcMesh.position.set(startPosition.x, startPosition.y, startPosition.z);
+                    drawAndMeasurePath();
+                }
+            });
 
             document.addEventListener('pointermove', onPointerMove);
             document.addEventListener('pointerup', onPointerUp);
@@ -104,12 +100,25 @@
         });
     });
 
-    function createMesh() {
+    function createMesh(parent) {
         let boxWidthMeters = 0.1;
         let boxHeightMeters = 0.1;
         let boxDepthMeters = 0.1;
         let mToUnit = 1000;
         let geometry = new THREE.BoxGeometry(boxWidthMeters * mToUnit, boxHeightMeters * mToUnit, boxDepthMeters * mToUnit);
+
+        let calcMaterial = new THREE.MeshBasicMaterial({
+            color: '#eb0e7e',
+            opacity: 0.1,
+            transparent: true,
+        });
+        calcMesh = new THREE.Mesh(geometry, calcMaterial);
+        calcMesh.name = 'calcMesh';
+        calcMesh.position.x = 0;
+        calcMesh.position.y = boxHeightMeters / 2 * mToUnit;
+        calcMesh.position.z = 0;
+        parent.add( calcMesh );
+
         const palette = ['#eb0e7e']; // '#ff0077', '#0077ff', '#ff00ff', '#ff7700', '#7700ff', '#ffff00'];
         const sensorColor = palette[Math.floor(Math.random() * palette.length)];
         let material = new THREE.MeshBasicMaterial({
@@ -122,7 +131,7 @@
         mesh.position.x = 0;
         mesh.position.y = boxHeightMeters / 2 * mToUnit;
         mesh.position.z = 0;
-        threejsContainerObj.add( mesh );
+        parent.add( mesh );
     }
 
     function createEndMesh(parent) {
@@ -140,7 +149,7 @@
         endCalcMesh = new THREE.Mesh(geometry, calcMaterial);
         endCalcMesh.name = 'endCalcMesh';
         endCalcMesh.position.x = 150;
-        endCalcMesh.position.y = 0;
+        endCalcMesh.position.y = boxHeightMeters / 2 * mToUnit;
         endCalcMesh.position.z = 0;
         parent.add( endCalcMesh );
 
@@ -154,7 +163,7 @@
         endMesh = new THREE.Mesh(geometry, material);
         endMesh.name = 'endMesh';
         endMesh.position.x = 150;
-        endMesh.position.y = 0;
+        endMesh.position.y = boxHeightMeters / 2 * mToUnit;
         endMesh.position.z = 0;
         parent.add( endMesh );
     }
@@ -168,10 +177,6 @@
         plane.visible = false;
         threejsContainerObj.add( plane );
         plane.name = 'groundPlaneElement';
-    }
-
-    function createTextMesh() {
-
     }
 
     function touchDecider(eventData) {
@@ -208,8 +213,16 @@
         console.log(intersects);
 
         intersects.forEach(function(intersect) {
-            if (intersect.object.name === 'endMesh' || intersect.object.name === 'endCalcMesh' || intersect.object.name === 'pathMesh') {
+            if (intersect.object.name === 'endMesh' ||
+                intersect.object.name === 'endCalcMesh') {
                 isDragging = true;
+                isDraggingEnd = true;
+            }
+            if (intersect.object.name === 'mesh' ||
+                intersect.object.name === 'calcMesh' ||
+                intersect.object.name === 'pathMesh') {
+                isDragging = true;
+                isDraggingStart = true;
             }
         });
     }
@@ -228,20 +241,15 @@
             return intersect.object.name === 'groundPlaneElement';
         });
 
-        // console.log(intersects);
-
-        // let currentWorldPosition = endMesh.getWorldPosition();
-        // let newWorldPosition = intersects[0].point;
-
-        let dPos = endCalcMesh.worldToLocal(intersects[0].point);
-        let newPos = new THREE.Vector3(endCalcMesh.position.x + dPos.x, 0, endCalcMesh.position.z + dPos.z);
-
-        endMesh.position.set(newPos.x, newPos.y, newPos.z);
-
-        console.log(newPos);
-
-        // endMesh.position.x = endMesh.position.x + dPos.x;
-        // endMesh.position.z = endMesh.position.z + dPos.z;
+        if (isDraggingStart) {
+            let dPos = calcMesh.worldToLocal(intersects[0].point);
+            let newPos = new THREE.Vector3(calcMesh.position.x + dPos.x, calcMesh.position.y, calcMesh.position.z + dPos.z);
+            mesh.position.set(newPos.x, newPos.y, newPos.z);
+        } else if (isDraggingEnd) {
+            let dPos = endCalcMesh.worldToLocal(intersects[0].point);
+            let newPos = new THREE.Vector3(endCalcMesh.position.x + dPos.x, endCalcMesh.position.y, endCalcMesh.position.z + dPos.z);
+            endMesh.position.set(newPos.x, newPos.y, newPos.z);
+        }
 
         drawAndMeasurePath();
     }
@@ -251,25 +259,33 @@
 
         console.log('stop drag');
 
-        endCalcMesh.position.set(endMesh.position.x, endMesh.position.y, endMesh.position.z);
+        if (isDraggingStart) {
+            calcMesh.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
+            window.storage.write('startPosition', { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+        }
 
-        window.storage.write('endPosition', { x: endMesh.position.x, y: endMesh.position.y, z: endMesh.position.z });
+        if (isDraggingEnd) {
+            endCalcMesh.position.set(endMesh.position.x, endMesh.position.y, endMesh.position.z);
+            window.storage.write('endPosition', { x: endMesh.position.x, y: endMesh.position.y, z: endMesh.position.z });
+        }
 
         drawAndMeasurePath();
 
         isDragging = false;
+        isDraggingStart = false;
+        isDraggingEnd = false;
     }
 
     function drawAndMeasurePath() {
         // update path mesh
         if (pathMesh) {
-            mesh.remove(pathMesh);
+            threejsContainerObj.remove(pathMesh);
         }
         pathMesh = window.pathToMesh([
             {
-                x: 0,
-                y: 0,
-                z: 0
+                x: mesh.position.x,
+                y: mesh.position.y,
+                z: mesh.position.z
             },
             {
                 x: endMesh.position.x,
@@ -278,7 +294,7 @@
             },
         ], 30, 30);
         pathMesh.name = 'pathMesh';
-        mesh.add(pathMesh);
+        threejsContainerObj.add(pathMesh);
 
         updateDistance();
     }
@@ -295,14 +311,6 @@
 
     function renderText(distance) {
         let distanceText = (distance / 1000).toFixed(2) + ' m';
-        // window.textToMesh(distanceText, 200, function(textMesh) {
-        //     if (distanceTextMesh) {
-        //         mesh.removeChild(distanceTextMesh);
-        //     }
-        //
-        //     distanceTextMesh = textMesh;
-        //     mesh.add(distanceTextMesh);
-        // })
 
         const loader = new THREE.FontLoader();
 
@@ -320,14 +328,9 @@
                 bevelOffset: 0,
                 bevelSegments: 5
             } );
-            // const material = new THREE.MeshBasicMaterial({
-            //     color: '#ffffff',
-            //     opacity: 0.9,
-            //     transparent: true
-            // });
 
             if (distanceTextMesh) {
-                mesh.remove(distanceTextMesh);
+                threejsContainerObj.remove(distanceTextMesh);
             }
 
             distanceTextMesh = new THREE.Mesh(geometry, [
@@ -339,9 +342,10 @@
             distanceTextMesh.position.y = 100 + (mesh.position.y + endMesh.position.y) / 2;
             distanceTextMesh.position.z = (mesh.position.z + endMesh.position.z) / 2;
 
-            distanceTextMesh.rotation.x = - Math.PI / 2;
+            distanceTextMesh.rotation.x = - Math.PI / 2; // facing up to the ceiling
+            // TODO: text is upside down if you look from the wrong angle... can we billboard it?
 
-            mesh.add(distanceTextMesh)
+            threejsContainerObj.add(distanceTextMesh)
 
         }, function(progress) {
             console.log('font progress', progress);
